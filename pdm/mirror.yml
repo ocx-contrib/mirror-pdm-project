@@ -86,10 +86,14 @@ assets:
   "linux/arm64+libc.glibc":
     - "^pdm-.*-aarch64-unknown-linux-gnu\\.tar\\.gz$"
   # ── Pass 2 (darwin) ────────────────────────────────────────────────────────
-  # darwin/amd64:
-  #   - "^pdm-.*-x86_64-apple-darwin\\.tar\\.gz$"
-  # darwin/arm64:
-  #   - "^pdm-.*-aarch64-apple-darwin\\.tar\\.gz$"
+  # Layout proved runner-free before this pass: a throwaway darwin+windows
+  # probe spec through `pipeline prepare` + `tar tvf` put a single mode-0755
+  # `pdm` at the bundle root for both arches, each resolving exactly one asset
+  # with no ambiguity error.
+  darwin/amd64:
+    - "^pdm-.*-x86_64-apple-darwin\\.tar\\.gz$"
+  darwin/arm64:
+    - "^pdm-.*-aarch64-apple-darwin\\.tar\\.gz$"
   #
   # ── Pass 3 (windows) ───────────────────────────────────────────────────────
   # windows/amd64:

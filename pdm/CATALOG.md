@@ -73,17 +73,6 @@ pdm run test
 pdm export -o requirements.txt --without-hashes
 ```
 
-## Install with ocx
-
-```sh
-ocx install ocx.sh/pdm-project/pdm
-```
-
-```sh
-# or pin a specific version
-ocx install ocx.sh/pdm-project/pdm:2.28.0
-```
-
 ## Links
 
 - [pdm on GitHub](https://github.com/pdm-project/pdm)

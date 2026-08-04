@@ -1,0 +1,173 @@
+# ⚠ `extends:` is a SHALLOW merge of TOP-LEVEL KEYS. Setting a key here
+# REPLACES the base's block outright — there is no per-key merge. `platforms:`
+# is deliberately NOT restated below: it carries the container legs that make
+# this spec's `+libc.glibc` Linux keys evidence rather than assertion, and
+# restating it to tweak one runner would drop them all without reddening
+# anything.
+extends: ../mirror-base.yml
+
+name: pdm
+
+# Logical index package `pdm-project/pdm` at the physical path
+# `ghcr.io/ocx-contrib/pdm-project/pdm` — slash segments, never
+# hyphen-flattened. Two segments always; the GitHub org IS the project's own
+# brand, so the org names the namespace and the tool names the package. The
+# first segment must be this repo's own GitHub owner: GITHUB_TOKEN only
+# authorises packages owned by the repo the workflow runs in.
+target:
+  registry: ghcr.io
+  repository: ocx-contrib/pdm-project/pdm
+
+source:
+  type: github_release
+  owner: pdm-project
+  repo: pdm
+  # pdm tags are BARE semver with no "v" prefix (`2.28.0`). Verified against
+  # every tag back to 2.25.7 — the scheme has never varied — and the anchored
+  # `$` keeps any future suffixed tag out.
+  tag_pattern: "^(?P<version>\\d+\\.\\d+\\.\\d+)$"
+
+# ─── libc gate (Phase 3.5) — the evidence, not the conclusion ───────────────
+#
+# The Linux assets are named `-unknown-linux-gnu`, but a name is not a
+# measurement. Both declared arches were read at BOTH ends of the mirrored
+# range (2.27.0 and 2.28.0), because a toolchain can change mid-series:
+#
+#   $ file pdm-2.28.0-x86_64-unknown-linux-gnu/pdm
+#   ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked,
+#   interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 3.2.0, stripped
+#   $ readelf -d … | grep NEEDED  → libgcc_s.so.1, libm.so.6, libc.so.6
+#
+#   $ file pdm-2.28.0-aarch64-unknown-linux-gnu/pdm
+#   ELF 64-bit LSB pie executable, ARM aarch64, version 1 (SYSV), dynamically
+#   linked, interpreter /lib/ld-linux-aarch64.so.1, for GNU/Linux 3.7.0, stripped
+#   $ readelf -d … | grep NEEDED  → libgcc_s.so.1, libm.so.6, libc.so.6,
+#                                   ld-linux-aarch64.so.1
+#
+#   (2.27.0 x86_64 and 2.27.0 aarch64: byte-identical verdicts — same
+#    interpreters, same three/four NEEDED entries.)
+#
+# A glibc PT_INTERP and `libc.so.6` in DT_NEEDED on all four: the artifact
+# REQUIRES a glibc userland, so both Linux keys carry `+libc.glibc` — here and
+# on the matching `platforms:` key in ../mirror-base.yml. The suffix goes on
+# BOTH or the two halves describe different platforms.
+#
+# Not UPX-packed — `strings -a … | grep -c '^UPX'` returns 0 on all four, and
+# the section-header count is non-zero, so the readelf verdict above is the
+# real one and not a packer stub.
+#
+# The glibc FLOOR is GLIBC_2.39 on BOTH arches (unusually high; recorded in
+# ../mirror-base.yml with the image implications).
+#
+# ─── Scope + resolution (verified on EVERY in-range release) ────────────────
+#
+# The mirrored range is exactly 2.27.0 and 2.28.0 — two releases. Each pattern
+# below was matched against each release's full asset list: EXACTLY ONE match,
+# every time, both ways. A pattern matching zero is silently skipped rather
+# than an error, which would yield a green run with a missing platform. Every
+# asset name also embeds the version of the tag that carries it
+# (`pdm-2.28.0-*` under tag `2.28.0`), so no release re-ships a previous
+# version's binaries under a new tag.
+#
+# ⚠ EVERY PATTERN ENDS `\.tar\.gz$`. Upstream ships a `.tar.gz.sha256` sidecar
+# beside each of the five archives; an unanchored pattern would match both and
+# fail as ambiguous.
+#
+# ⚠ `versions.min` IS 2.27.0 BECAUSE 2.26.9 SHIPS ZERO ASSETS, not because
+# binary releases start there. 2.26.8 and every release back through 2.25.x DO
+# publish the same five archives — but tag 2.26.9 has an empty `assets[]`
+# (`gh api repos/pdm-project/pdm/releases/tags/2.26.9 --jq '.assets|length'`
+# → 0, a source-only release). An asset-less release inside the range is
+# SILENTLY DROPPED by the pipeline rather than reported, so the honest floor is
+# the first release above it.
+assets:
+  "linux/amd64+libc.glibc":
+    - "^pdm-.*-x86_64-unknown-linux-gnu\\.tar\\.gz$"
+  "linux/arm64+libc.glibc":
+    - "^pdm-.*-aarch64-unknown-linux-gnu\\.tar\\.gz$"
+  # ── Pass 2 (darwin) ────────────────────────────────────────────────────────
+  # darwin/amd64:
+  #   - "^pdm-.*-x86_64-apple-darwin\\.tar\\.gz$"
+  # darwin/arm64:
+  #   - "^pdm-.*-aarch64-apple-darwin\\.tar\\.gz$"
+  #
+  # ── Pass 3 (windows) ───────────────────────────────────────────────────────
+  # windows/amd64:
+  #   - "^pdm-.*-x86_64-pc-windows-msvc\\.tar\\.gz$"
+  #
+  # windows/arm64 has no upstream asset on any release in range — nothing to
+  # stage. Upstream's only Windows target is `x86_64-pc-windows-msvc`.
+
+# Every archive is a FLAT, SINGLE-ENTRY tarball: one mode-0755 file at the
+# archive root — `pdm` on unix, `pdm.exe` on windows — and no directory member
+# at all. Verified by `tar tvf` on all ten in-range assets (5 platforms ×
+# 2 versions).
+#
+# ⚠ strip_components MUST be 0 here, and 1 would NOT red. On an archive whose
+# every entry sits at depth 1 there is nothing to hoist. Measured on this
+# package with a throwaway strip_components:1 spec:
+#
+#   $ ocx-mirror package pipeline prepare --spec …/strip1.yml --version 2.28.0
+#   INFO [pdm] Preparing version 2.28.0 (1 platforms)          → exit 0
+#   $ tar tvf …/bundle.tar.xz | wc -l
+#   0
+#
+# An EMPTY artifact published on a fully green run. The correct value is not
+# inferable from the exit code — only from `tar tvf` on the asset.
+asset_type:
+  type: archive
+  strip_components: 0
+
+# FORCED by the flat archive, not chosen. `bin_scan` only inspects an
+# interface-visible `${installPath}/<dir>` PATH entry, and this archive has no
+# subdirectory to point one at, so both `auto` and `verify` fail spec load at
+# exit 65:
+#
+#   bin_scan is enabled but metadata.json declares no interface-visible
+#   ${installPath}/<dir> PATH entry — the verification would inspect no file and
+#   pass green whatever the archive contains.
+#
+# The `binaries` list in metadata.json is therefore hand-maintained, exactly as
+# that error directs. It is as short and stable as a list gets: the archive
+# contains exactly ONE entry. Quoted so no YAML 1.1 reader folds the bare word
+# into boolean `false`.
+bin_scan: "off"
+
+metadata:
+  default: metadata.json
+
+catalog:
+  logo: logo.svg
+
+versions:
+  # 2.27.0 — the first release ABOVE the asset-less 2.26.9; see the resolution
+  # note above `assets:`. Both releases from here resolve all declared
+  # platforms.
+  min: "2.27.0"
+  new_per_run: 5
+  poll_interval: "23 */6 * * *"
+
+tests:
+  # `script:` resolves from the REPOSITORY ROOT — unlike `metadata.default` and
+  # `catalog.logo` above, which resolve against this spec's own directory.
+  #
+  # The functional assertion is `pdm import`, a purely local pyproject.toml
+  # transformation: no project interpreter, no lock file, no network. It was
+  # chosen over `lock`/`install`/`show`, all of which resolve against PyPI and
+  # would make the leg a network test. See ../README.md for why the launcher's
+  # own one-time PyPI bootstrap is a separate matter that the smoke cannot and
+  # should not avoid.
+  - name: smoke
+    script: pdm/tests/smoke.star
+
+annotations:
+  # From the Phase 1.5 license gate:
+  #   $ gh api repos/pdm-project/pdm/license --jq '.license.spdx_id'
+  #   MIT
+  org.opencontainers.image.licenses: "MIT"
+
+announce:
+  # Spelled out, not derived from target.repository — the logical name and the
+  # physical path are related by convention only.
+  package: pdm-project/pdm
+  fork: ocx-contrib/index

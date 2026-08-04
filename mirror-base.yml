@@ -1,0 +1,132 @@
+# Shared base for every spec in this repository (pdm, the Python package and
+# dependency manager).
+#
+# NOT a spec: it has no name/target/source and is never loaded on its own.
+# Everything a package owns — name, target, source, assets, asset_type,
+# bin_scan, metadata, catalog, tests, versions, announce, annotations — stays
+# in that package's own mirror.yml.
+#
+# ⚠️ `extends:` is a SHALLOW merge of top-level keys. A spec that sets a key
+# below replaces that block OUTRIGHT — there is no per-key merge. `platforms:`
+# is where this bites: it carries BOTH the runner matrix and the container
+# legs, so a child that restates it to tweak one runner silently drops every
+# `containers:` entry. Nothing reds — the legs simply stop existing, and every
+# os.features claim in that spec goes back to being merely asserted. Restate
+# `platforms:` IN FULL or not at all. pdm/mirror.yml deliberately does NOT
+# restate it, which removes that trap structurally.
+
+skip_prereleases: true
+cascade: true
+
+# New package; upstream versions are bare semver (`2.28.0`) carrying no `+build`
+# segment, so the fleet default applies with no exception. A cascade tag
+# (`latest`, `2`, `2.28`) re-points on every re-publish; without a build segment
+# the new manifest would reuse the bare version tag and orphan the prior digest
+# for registry GC, breaking any `@sha256:` pin in a consumer's ocx.lock.
+build_timestamp: date
+
+verify:
+  github_asset_digest: true
+
+concurrency:
+  # Assets are 16–22 MB gzip tarballs around a single ~23 MB PyApp launcher —
+  # large for this fleet, so downloads and bundles are kept modest.
+  max_downloads: 5
+  max_bundles: 3
+  max_pushes: 2
+  rate_limit_ms: 100
+  max_retries: 3
+  compression_threads: 0
+
+# ─── Platform matrix ────────────────────────────────────────────────────────
+#
+# `os.features` states what an artifact REQUIRES OF THE HOST — it is not a
+# label for how it was built. Upstream's Linux assets are named
+# `-unknown-linux-gnu`, but the name is not the verdict; the ELF header is.
+# Both declared arches were byte-measured at BOTH ends of the mirrored range
+# (2.27.0 and 2.28.0): all four are `dynamically linked` PIE executables with a
+# glibc PT_INTERP and `libc.so.6` in DT_NEEDED. The measurement transcript is
+# recorded above pdm/mirror.yml's `assets:`.
+#
+# So both Linux keys carry `+libc.glibc`, on the `platforms:` key here and on
+# the matching `assets:` key in the spec. A bare key would claim the artifact
+# runs under any Linux userland; it does not — see the alpine result below.
+#
+# ─── NO alpine leg — measured, not assumed ──────────────────────────────────
+#
+# A `+libc.glibc` key tested in a musl image would be rejected by the renderer
+# at exit 65, and rightly: the artifact cannot load there. Measured on the real
+# 2.28.0 x86_64 binary, which is exactly the failure the key exists to prevent:
+#
+#   $ docker run --rm -v …:/b:ro alpine:3.20 sh -c '/b/pdm --version'
+#   sh: /b/pdm: not found                                        → exit 127
+#
+# ubuntu:24.04 and fedora:40 are two independent glibc vintages and both run it:
+#
+#   $ docker run --rm -v …:/b:ro ubuntu:24.04 sh -c 'ldd --version; /b/pdm --version'
+#   ldd (Ubuntu GLIBC 2.39-0ubuntu8.7) 2.39
+#   PDM, version 2.28.0                                          → exit 0
+#   $ docker run --rm -v …:/b:ro fedora:40 sh -c 'ldd --version; /b/pdm --version'
+#   ldd (GNU libc) 2.39
+#   PDM, version 2.28.0                                          → exit 0
+#
+# ⚠️ The glibc FLOOR IS 2.39 ON BOTH ARCHES — unusually high, and identical
+# across them (`readelf -V … | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1`).
+# Nothing in the spec can express a libc VERSION (`os.features` carries a
+# family only), so this never reds on its own. It is recorded because it
+# decides which base images can clear it: ubuntu:24.04 and fedora:40 both ship
+# exactly 2.39 and pass with no headroom. An older image (ubuntu:22.04 = 2.35,
+# fedora:38 = 2.37) would fail, and that would be an image choice, not an
+# artifact defect.
+#
+# ─── NO `containers[].setup:` — deliberate, and measured ────────────────────
+#
+# The launcher pip-installs pdm's Python dependencies from PyPI into $HOME on
+# first run (see pdm/CATALOG.md). Both stock images already carry everything
+# that needs — the cold-start run above completed on unmodified ubuntu:24.04
+# and fedora:40 with no provisioning, in ~9 s. Adding a setup line here would
+# provision nothing that is missing.
+platforms:
+  "linux/amd64+libc.glibc":
+    runner: ubuntu-latest
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "fedora:40",    shell: bash }
+  "linux/arm64+libc.glibc":
+    # arm64 container legs run natively — no qemu — so the runner arch must
+    # match the platform or the renderer reds the leg up front.
+    runner: ubuntu-24.04-arm
+    containers:
+      - { image: "ubuntu:24.04", shell: bash }
+      - { image: "fedora:40",    shell: bash }
+  # ── Pass 2 (darwin) ────────────────────────────────────────────────────────
+  # Kept commented in lockstep with the matching `assets:` keys in
+  # pdm/mirror.yml. A declared platform with no resolvable asset does not red —
+  # it boots a real runner and reports SUCCESS having tested nothing — so the
+  # platform key and its asset regex are uncommented in the SAME pass.
+  #
+  # darwin/amd64:
+  #   # Intel slice tested on the arm64 macos-14 runner via Rosetta 2 —
+  #   # GitHub's native macos-13 Intel pool is exhausted and deadlocks push.
+  #   runner: macos-14
+  #   prefix: ["arch", "-x86_64"]
+  # darwin/arm64:
+  #   runner: macos-14
+  #   shell: bash
+  #
+  # ── Pass 3 (windows) ───────────────────────────────────────────────────────
+  # windows/amd64:
+  #   runner: windows-latest
+  #   shell: pwsh
+  #
+  # windows/arm64 is DELIBERATELY ABSENT, not staged: upstream ships exactly one
+  # Windows asset, `x86_64-pc-windows-msvc`, on every release in range. There is
+  # nothing to declare.
+  #
+  # No `containers:` on darwin or windows — those runners have no Linux
+  # container engine, and the key is rejected at spec load.
+
+notify:
+  discord:
+    webhook_secret: OCX_MIRROR_DISCORD_HOOK
+    user_id: "227748867204972545"  # pinged in-message on failures

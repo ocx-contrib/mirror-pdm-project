@@ -59,15 +59,25 @@ is local *after* the bootstrap, which rules out `lock`, `install`, `add` and
 
 ## Platforms
 
-Pass 1 declares both Linux arches. `darwin/amd64`, `darwin/arm64` and
-`windows/amd64` are pre-written **commented**, in `pdm/mirror.yml` and
-`mirror-base.yml` together, and are uncommented in the same pass — a declared
-platform that resolves no asset does not red, it boots a real runner and
-reports SUCCESS having tested nothing.
+`pdm` publishes five platform entries: both Linux arches, both macOS arches and
+`windows/amd64` — every target upstream ships.
 
-`windows/arm64` is absent rather than staged: upstream's only Windows target is
-`x86_64-pc-windows-msvc`, on every release in range. There is nothing to
+`windows/arm64` is absent rather than deferred: upstream's only Windows target
+is `x86_64-pc-windows-msvc`, on every release in range. There is nothing to
 declare.
+
+They were rolled out in three passes (linux → darwin → windows) for cost, with
+each platform's key commented in `pdm/mirror.yml` and `mirror-base.yml`
+*together* until its pass — a declared platform that resolves no asset does not
+red, it boots a real runner and reports SUCCESS having tested nothing.
+
+Before spending a macOS (10×) or Windows (2×) minute, the darwin and windows
+archive layouts were settled **runner-free**: a throwaway probe spec through
+`pipeline prepare` + `tar tvf` put a single mode-0755 `pdm` (`pdm.exe` on
+Windows) at the bundle root for all three, each resolving exactly one asset with
+no ambiguity error. `asset_type: archive` preserves the upstream `.exe` name, so
+no per-platform `name:` override is needed and the `pdm.exe` ternary in
+`tests/smoke.star` is what selects it.
 
 ### Both Linux keys are `+libc.glibc`, measured
 

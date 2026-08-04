@@ -96,8 +96,12 @@ assets:
     - "^pdm-.*-aarch64-apple-darwin\\.tar\\.gz$"
   #
   # ── Pass 3 (windows) ───────────────────────────────────────────────────────
-  # windows/amd64:
-  #   - "^pdm-.*-x86_64-pc-windows-msvc\\.tar\\.gz$"
+  # Same runner-free probe as darwin: `strip_components: 0` lands a single
+  # mode-0755 `pdm.exe` at the bundle root. `asset_type: archive` preserves the
+  # upstream name, so no per-platform `name:` override is needed and
+  # tests/smoke.star's `pdm.exe` ternary is what selects it.
+  windows/amd64:
+    - "^pdm-.*-x86_64-pc-windows-msvc\\.tar\\.gz$"
   #
   # windows/arm64 has no upstream asset on any release in range — nothing to
   # stage. Upstream's only Windows target is `x86_64-pc-windows-msvc`.

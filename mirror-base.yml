@@ -115,9 +115,9 @@ platforms:
     shell: bash
   #
   # ── Pass 3 (windows) ───────────────────────────────────────────────────────
-  # windows/amd64:
-  #   runner: windows-latest
-  #   shell: pwsh
+  windows/amd64:
+    runner: windows-latest
+    shell: pwsh
   #
   # windows/arm64 is DELIBERATELY ABSENT, not staged: upstream ships exactly one
   # Windows asset, `x86_64-pc-windows-msvc`, on every release in range. There is

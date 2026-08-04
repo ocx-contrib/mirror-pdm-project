@@ -6,7 +6,7 @@ name: pdm
 
 on:
   schedule:
-    - cron: '23 */6 * * *'
+    - cron: '33 2-23/6 * * *'
   workflow_dispatch:
   push:
     branches: [main]

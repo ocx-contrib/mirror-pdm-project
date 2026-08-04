@@ -153,7 +153,7 @@ versions:
   # platforms.
   min: "2.27.0"
   new_per_run: 5
-  poll_interval: "23 */6 * * *"
+  poll_interval: "33 2-23/6 * * *"
 
 tests:
   # `script:` resolves from the REPOSITORY ROOT — unlike `metadata.default` and

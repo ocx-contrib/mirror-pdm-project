@@ -24,7 +24,7 @@ Published to `ghcr.io/ocx-contrib/pdm-project/pdm`.
 
 | Component | SPDX | Holder |
 |---|---|---|
-| pdm (`pdm`) | **MIT** | Copyright (c) 2019 Frost Ming |
+| pdm (`pdm`) | **MIT** | Copyright (c) 2019-present Frost Ming |
 
 Verified at the Phase 1.5 license gate:
 
